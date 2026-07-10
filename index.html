@@ -1,5 +1,6 @@
 <title>LSAT 170 Trainer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
 <style>
 :root{
   --bg:#F6F6F2; --surface:#FFFFFF; --surface2:#EFEFE9; --border:#DFDFD7;
@@ -1288,13 +1289,14 @@ function render() {
 }
 
 /* ---------- shared bits ---------- */
-const HOME_URL = 'https://ehbjmzsgkvjkdjgpjjfv.supabase.co/functions/v1/lsat';
 function storageBanner() {
   const h = location.hostname;
   let framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
   if (h === 'claude.ai' || h.endsWith('.claude.ai') || h.endsWith('claudeusercontent.com') || framed) {
     return '<div class="banner"><strong>Heads up:</strong> this claude.ai page cannot keep your progress between visits. ' +
-      'Study at your permanent copy instead, it saves automatically: <a href="' + HOME_URL + '" target="_blank" rel="noopener">open the app</a> and bookmark it.</div>';
+      'Study where it saves automatically: the <strong>LSAT Study App</strong> shortcut on your desktop, or on any device at ' +
+      '<a href="https://selahapp.github.io/lsat-trainer-nklbtd/" target="_blank" rel="noopener">your private app link</a>. ' +
+      'Did work here anyway? More tab &rarr; Copy backup, then Import it there.</div>';
   }
   return store.ok ? '' :
     '<div class="banner"><strong>Heads up:</strong> this browser will not save progress between visits. ' +
