@@ -218,6 +218,8 @@ textarea{width:100%;min-height:110px;font-size:.82rem;font-family:ui-monospace,C
 .anno-chip.ar-s b{color:var(--anu-s)}.anno-chip.ar-i b{color:var(--anu-i)}
 .anno-sep{width:1px;height:18px;background:var(--border)}
 .anno{cursor:text}
+.ab{font-weight:700}
+.lc-marks{color:var(--accent);font-weight:600}
 .ah-a{background:var(--an-a)}.ah-p{background:var(--an-p)}.ah-c{background:var(--an-c)}
 .ah-s{background:var(--an-s)}.ah-i{background:var(--an-i)}
 .au-a{text-decoration:underline;text-decoration-color:var(--anu-a);text-decoration-thickness:2px}
@@ -655,16 +657,39 @@ function viewFlash() {
 const ANNO = { role: null, mode: 'hl' };  // mode: hl | ul | letter | erase
 const ANNO_ROLES = { a: 'Argument', p: 'Premise', c: 'Conclusion', s: 'Support', i: 'Indicator' };
 const ANNOTEXT = {};  // textKey -> source string (rebuilt each render)
+const ANNOBOLD = {};  // textKey -> [{s,e}] bold ranges stripped from **markup**
+
+/* strip **bold** markers, returning plain text + bold ranges in plain-text offsets */
+function mdStrip(s) {
+  s = String(s || '');
+  const bolds = []; let text = ''; let i = 0;
+  while (i < s.length) {
+    const a = s.indexOf('**', i);
+    if (a < 0) { text += s.slice(i); break; }
+    const b = s.indexOf('**', a + 2);
+    if (b < 0) { text += s.slice(i); break; }
+    text += s.slice(i, a);
+    bolds.push({ s: text.length, e: text.length + (b - a - 2) });
+    text += s.slice(a + 2, b);
+    i = b + 2;
+  }
+  return { text, bolds };
+}
 
 function annoInner(text, key) {
   const a = P.annot[key];
-  if (!a || (!a.r.length && !a.l.length)) return esc(text);
+  const bolds = ANNOBOLD[key] || [];
+  const marked = a && (a.r.length || a.l.length);
+  if (!marked && !bolds.length) return esc(text);
   const clamp = n => Math.max(0, Math.min(text.length, n));
   const bounds = new Set([0, text.length]);
-  for (const r of a.r) { bounds.add(clamp(r.s)); bounds.add(clamp(r.e)); }
-  for (const l of a.l) bounds.add(clamp(l.p));
+  if (a) {
+    for (const r of a.r) { bounds.add(clamp(r.s)); bounds.add(clamp(r.e)); }
+    for (const l of a.l) bounds.add(clamp(l.p));
+  }
+  for (const b of bolds) { bounds.add(clamp(b.s)); bounds.add(clamp(b.e)); }
   const pts = [...bounds].sort((x, y) => x - y);
-  const lettersAt = p => a.l.filter(l => clamp(l.p) === p);
+  const lettersAt = p => a ? a.l.filter(l => clamp(l.p) === p) : [];
   let out = '';
   for (let i = 0; i < pts.length; i++) {
     const s = pts[i];
@@ -673,12 +698,13 @@ function annoInner(text, key) {
     const e = pts[i + 1];
     const seg = text.slice(s, e);
     let hl = null; const uls = [];
-    for (const r of a.r) if (clamp(r.s) <= s && clamp(r.e) >= e) {
+    if (a) for (const r of a.r) if (clamp(r.s) <= s && clamp(r.e) >= e) {
       if (r.m === 'ul') uls.push(r.role); else hl = r.role;
     }
     const cls = [];
     if (hl) cls.push('ah-' + hl);
     for (const u of new Set(uls)) cls.push('au-' + u);
+    if (bolds.some(b => clamp(b.s) <= s && clamp(b.e) >= e)) cls.push('ab');
     out += cls.length ? '<span class="' + cls.join(' ') + '">' + esc(seg) + '</span>' : esc(seg);
   }
   return out;
@@ -687,6 +713,18 @@ function annoBlock(text, key, cls, tag) {
   ANNOTEXT[key] = text;
   tag = tag || 'div';
   return '<' + tag + ' class="anno ' + (cls || '') + '" data-akey="' + key + '">' + annoInner(text, key) + '</' + tag + '>';
+}
+/* annotatable block for text that may contain **bold** markup */
+function annoBlockMd(mdText, key, cls, tag) {
+  const { text, bolds } = mdStrip(mdText);
+  ANNOBOLD[key] = bolds;
+  return annoBlock(text, key, cls, tag);
+}
+function lessonMarkCount(id) {
+  let n = 0;
+  for (const [k, v] of Object.entries(P.annot))
+    if (k.indexOf('L.' + id + '.') === 0) n += v.r.length + v.l.length;
+  return n;
 }
 function annoRefresh(key) {
   const el = document.querySelector('[data-akey="' + key + '"]');
@@ -1484,11 +1522,14 @@ function viewLearn() {
   return '<div class="spread" style="margin-bottom:4px"><h1>Lessons</h1><span class="faint num">' + doneCount + ' / ' + D.lessons.length + ' done</span></div>' +
     '<p class="muted small">Short, plain-language lessons. Each one ends with a quick 3-question check.</p>' +
     units.map(u => '<div class="unit-h">' + esc(u.name) + '</div>' +
-      u.lessons.map(l => '<a class="lesson-card" href="#/lesson/' + l.id + '">' +
+      u.lessons.map(l => {
+        const marks = lessonMarkCount(l.id);
+        return '<a class="lesson-card" href="#/lesson/' + l.id + '">' +
         '<div style="flex:1"><div class="lc-title">' + esc(l.title) + '</div>' +
-        '<div class="faint">' + l.minutes + ' min</div></div>' +
+        '<div class="faint">' + l.minutes + ' min' + (marks ? ' · <span class="lc-marks">' + marks + ' mark' + (marks === 1 ? '' : 's') + '</span>' : '') + '</div></div>' +
         (P.lessonsDone[l.id] ? '<span class="lc-done">&#10003; done</span>' : '<span class="faint">&#9656;</span>') +
-        '</a>').join('')).join('');
+        '</a>';
+      }).join('')).join('');
 }
 
 function viewLesson(id) {
@@ -1500,17 +1541,19 @@ function viewLesson(id) {
   return '<p class="small"><a href="#/learn">&larr; All lessons</a></p>' +
     '<div class="faint" style="text-transform:uppercase;letter-spacing:.06em;font-size:.75rem">' + esc(l.unit) + ' · ' + l.minutes + ' min</div>' +
     '<h1>' + esc(l.title) + '</h1>' +
+    annoBar() +
     '<div class="lesson-body">' +
-    l.sections.map(s => {
+    l.sections.map((s, si) => {
       const isCoach = /coach tip/i.test(s.h);
-      return isCoach ? '<div class="coach"><strong>' + esc(s.h) + '</strong>' + paras(s.body) + '</div>'
-        : '<h2>' + esc(s.h) + '</h2>' + paras(s.body);
+      const body = annoParas(s.body, 'L.' + l.id + '.s' + si);
+      return isCoach ? '<div class="coach"><strong>' + esc(s.h) + '</strong>' + body + '</div>'
+        : '<h2>' + esc(s.h) + '</h2>' + body;
     }).join('') +
     (l.wordbox && l.wordbox.length ? '<div class="wordbox"><strong>Word box</strong><dl>' +
       l.wordbox.map(w => '<dt>' + esc(w.term) + '</dt><dd>' + md(w.def) + '</dd>').join('') + '</dl></div>' : '') +
     (l.example ? '<div class="example"><h3>Worked example</h3>' +
-      '<div class="stimulus-box">' + md(l.example.stimulus) + '</div>' +
-      '<ol>' + l.example.walkthrough.map(s => '<li>' + md(s) + '</li>').join('') + '</ol></div>' : '') +
+      '<div class="stimulus-box">' + annoBlockMd(l.example.stimulus, 'L.' + l.id + '.ex') + '</div>' +
+      '<ol>' + l.example.walkthrough.map((s, wi) => annoBlockMd(s, 'L.' + l.id + '.w' + wi, '', 'li')).join('') + '</ol></div>' : '') +
     '</div><hr>' +
     '<div class="row">' +
     (l.check && l.check.length ? '<button class="btn" data-action="start-check" data-lesson="' + l.id + '">Try it: ' + l.check.length + ' questions</button>' : '') +
@@ -1586,7 +1629,7 @@ function viewPractice() {
 
 /* ---------- SESSION ---------- */
 function annoParas(text, keyBase) {
-  return String(text || '').split(/\n\n+/).map((par, i) => annoBlock(par, keyBase + ':' + i, '', 'p')).join('');
+  return String(text || '').split(/\n\n+/).map((par, i) => annoBlockMd(par, keyBase + ':' + i, '', 'p')).join('');
 }
 function passageHTML(p) {
   if (!p) return '';
