@@ -220,6 +220,10 @@ textarea{width:100%;min-height:110px;font-size:.82rem;font-family:ui-monospace,C
 .anno{cursor:text}
 .ab{font-weight:700}
 .lc-marks{color:var(--accent);font-weight:600}
+.cov-row{display:flex;align-items:center;gap:10px;padding:3px 0}
+.cov-name{flex:0 0 44%;font-size:.85rem}
+.cov-bar{flex:1;height:8px}
+.cov-num{flex:0 0 64px;text-align:right;font-size:.8rem;color:var(--ink-soft)}
 .ah-a{background:var(--an-a)}.ah-p{background:var(--an-p)}.ah-c{background:var(--an-c)}
 .ah-s{background:var(--an-s)}.ah-i{background:var(--an-i)}
 .au-a{text-decoration:underline;text-decoration-color:var(--anu-a);text-decoration-thickness:2px}
@@ -1464,9 +1468,39 @@ function viewHome() {
       weak.map(x => '<div class="type-row"><span class="type-name">' + x.name + '</span>' +
         '<span class="acc ' + (x.acc >= .8 ? 'good' : x.acc < .6 ? 'bad' : '') + '">' + Math.round(x.acc * 100) + '%</span>' +
         '<button class="btn ghost sm" data-action="start-drill" data-type="' + x.slug + '">Drill</button></div>').join('') +
-      '</div>' : '');
+      '</div>' : '') +
+    bankCard();
 }
 
+/* distinct bank questions attempted at least once, per type (redos never double-count) */
+function bankCoverage() {
+  const seen = new Set();
+  for (const a of P.attempts) seen.add(a.qid);
+  const row = (name, slug, qs) => ({ name, slug, done: qs.filter(q => seen.has(q.id)).length, total: qs.length });
+  const lr = LR_TYPES.map(([slug, name]) => row(name, slug, D.lrQuestions.filter(q => q.type === slug)));
+  const rcQs = D.rcPassages.flatMap(p => p.questions);
+  const rc = Object.entries(RC_TYPE_NAME).map(([slug, name]) => row(name, slug, rcQs.filter(q => q.type === slug)))
+    .filter(x => x.total);
+  return { lr, rc };
+}
+function covRow(x) {
+  const pct = x.total ? Math.round(100 * x.done / x.total) : 0;
+  return '<div class="cov-row"><span class="cov-name">' + esc(x.name) + '</span>' +
+    '<div class="bar cov-bar"><span style="width:' + pct + '%"></span></div>' +
+    '<span class="cov-num num">' + x.done + ' / ' + x.total + '</span></div>';
+}
+function bankCard() {
+  const c = bankCoverage();
+  const all = [...c.lr, ...c.rc];
+  const done = all.reduce((a, x) => a + x.done, 0);
+  const total = all.reduce((a, x) => a + x.total, 0);
+  return '<div class="card"><div class="spread"><h2>Question bank</h2>' +
+    '<span class="faint num">' + done + ' / ' + total + ' done · ' + (total - done) + ' left</span></div>' +
+    '<p class="small muted">Fresh questions you have finished at least once. Redoing a question for review never counts twice. New question waves raise the totals here automatically.</p>' +
+    '<div class="unit-h" style="margin-top:10px">Logical Reasoning</div>' + c.lr.map(covRow).join('') +
+    '<div class="unit-h">Reading Comprehension</div>' + c.rc.map(covRow).join('') +
+    '</div>';
+}
 function findDay(dateStr) {
   for (const w of D.schedule.weeks) for (const day of w.days)
     if (day.date === dateStr) return { week: w, day };
