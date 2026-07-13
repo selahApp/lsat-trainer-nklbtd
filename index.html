@@ -220,10 +220,17 @@ textarea{width:100%;min-height:110px;font-size:.82rem;font-family:ui-monospace,C
 .anno{cursor:text}
 .ab{font-weight:700}
 .lc-marks{color:var(--accent);font-weight:600}
-.cov-row{display:flex;align-items:center;gap:10px;padding:3px 0}
-.cov-name{flex:0 0 44%;font-size:.85rem}
-.cov-bar{flex:1;height:8px}
-.cov-num{flex:0 0 64px;text-align:right;font-size:.8rem;color:var(--ink-soft)}
+.cov-row{display:flex;align-items:center;gap:8px;padding:3px 0}
+.cov-name{flex:0 0 34%;font-size:.85rem}
+.cov-bar{flex:1;height:8px;min-width:36px}
+.cov-num{flex:0 0 58px;text-align:right;font-size:.8rem;color:var(--ink-soft)}
+.cov-acc{flex:0 0 40px;text-align:right;font-size:.8rem}
+.cov-acc.good{color:var(--good)}.cov-acc.bad{color:var(--bad)}
+.cov-time{flex:0 0 38px;text-align:right;font-size:.8rem;color:var(--ink-soft)}
+.cov-head{padding:0}
+.cov-head span{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint)}
+.qtimer{font-weight:700;font-size:.9rem;margin-left:auto}
+.qtimer.running{color:var(--accent)}
 .ah-a{background:var(--an-a)}.ah-p{background:var(--an-p)}.ah-c{background:var(--an-c)}
 .ah-s{background:var(--an-s)}.ah-i{background:var(--an-i)}
 .au-a{text-decoration:underline;text-decoration-color:var(--anu-a);text-decoration-thickness:2px}
@@ -821,11 +828,30 @@ let timerId = null;
 
 function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
 
+/* per-question stopwatch (untimed sessions): press start, stops on answer */
+let qTimerId = null;
+function stopQTimer() { if (qTimerId) { clearInterval(qTimerId); qTimerId = null; } }
+function fmtSecs(s) { s = Math.round(s); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function tickQTimer() {
+  const el = document.getElementById('qtimer');
+  if (el) el.textContent = fmtSecs((Date.now() - Number(el.dataset.t0)) / 1000);
+}
+function qTimerHTML(qid, revealed) {
+  if (revealed) {
+    const s = S.qSecs[qid];
+    return s != null ? '<span class="qtimer num">' + fmtSecs(s) + '</span>' : '';
+  }
+  const t0 = S.qStart[qid];
+  if (t0) return '<span class="qtimer num running" id="qtimer" data-t0="' + t0 + '">' + fmtSecs((Date.now() - t0) / 1000) + '</span>';
+  return '<button class="btn sm" style="margin-left:auto" data-action="qtimer-start">&#9654; Start timer</button>';
+}
+
 function startSession(opts) {
   stopTimer();
   S = Object.assign({
     kind: 'drill', qids: [], idx: 0, answers: {}, revealed: {}, timed: false,
-    remaining: 0, done: false, passageId: null, backTo: null, confirmSubmit: false
+    remaining: 0, done: false, passageId: null, backTo: null, confirmSubmit: false,
+    qStart: {}, qSecs: {}
   }, opts);
   location.hash = '#/session';
   if (location.hash === '#/session') render();
@@ -991,9 +1017,11 @@ function shuffle(arr) {
 
 function getQ(qid) { return (S && S.genQs && S.genQs[qid]) || QMAP[qid]; }
 
-function recordAttempt(qid, picked, mode) {
+function recordAttempt(qid, picked, mode, secs) {
   const q = getQ(qid);
-  P.attempts.push({ qid, picked, correct: picked === q.answer, mode, at: Date.now() });
+  const rec = { qid, picked, correct: picked === q.answer, mode, at: Date.now() };
+  if (secs != null) rec.s = secs;
+  P.attempts.push(rec);
   save();
 }
 
@@ -1483,22 +1511,42 @@ function bankCoverage() {
     .filter(x => x.total);
   return { lr, rc };
 }
-function covRow(x) {
+/* per-type accuracy and average answer time, from all attempts */
+function typePerf() {
+  const agg = {};
+  for (const a of P.attempts) {
+    const q = QMAP[a.qid]; if (!q) continue;
+    const g = agg[q.type] || (agg[q.type] = { n: 0, c: 0, tn: 0, ts: 0 });
+    g.n++; if (a.correct) g.c++;
+    if (a.s != null) { g.tn++; g.ts += a.s; }
+  }
+  return agg;
+}
+function covRow(x, perf) {
   const pct = x.total ? Math.round(100 * x.done / x.total) : 0;
+  const g = perf[x.slug];
+  const acc = g && g.n ? Math.round(100 * g.c / g.n) : null;
+  const avg = g && g.tn ? fmtSecs(g.ts / g.tn) : null;
   return '<div class="cov-row"><span class="cov-name">' + esc(x.name) + '</span>' +
     '<div class="bar cov-bar"><span style="width:' + pct + '%"></span></div>' +
-    '<span class="cov-num num">' + x.done + ' / ' + x.total + '</span></div>';
+    '<span class="cov-num num">' + x.done + ' / ' + x.total + '</span>' +
+    '<span class="cov-acc num' + (acc == null ? '' : acc >= 80 ? ' good' : acc < 60 ? ' bad' : '') + '">' + (acc == null ? '' : acc + '%') + '</span>' +
+    '<span class="cov-time num">' + (avg == null ? '' : avg) + '</span></div>';
 }
 function bankCard() {
   const c = bankCoverage();
+  const perf = typePerf();
   const all = [...c.lr, ...c.rc];
   const done = all.reduce((a, x) => a + x.done, 0);
   const total = all.reduce((a, x) => a + x.total, 0);
+  const head = '<div class="cov-row cov-head"><span class="cov-name"></span>' +
+    '<div class="cov-bar" style="visibility:hidden"></div>' +
+    '<span class="cov-num">done</span><span class="cov-acc">score</span><span class="cov-time">avg</span></div>';
   return '<div class="card"><div class="spread"><h2>Question bank</h2>' +
     '<span class="faint num">' + done + ' / ' + total + ' done · ' + (total - done) + ' left</span></div>' +
-    '<p class="small muted">Fresh questions you have finished at least once. Redoing a question for review never counts twice. New question waves raise the totals here automatically.</p>' +
-    '<div class="unit-h" style="margin-top:10px">Logical Reasoning</div>' + c.lr.map(covRow).join('') +
-    '<div class="unit-h">Reading Comprehension</div>' + c.rc.map(covRow).join('') +
+    '<p class="small muted">Fresh questions you have finished at least once; redos never count twice. Score is your accuracy over all tries. Avg is your average answer time, from the question timer.</p>' +
+    '<div class="unit-h" style="margin-top:10px">Logical Reasoning</div>' + head + c.lr.map(x => covRow(x, perf)).join('') +
+    '<div class="unit-h">Reading Comprehension</div>' + head + c.rc.map(x => covRow(x, perf)).join('') +
     '</div>';
 }
 function findDay(dateStr) {
@@ -1723,7 +1771,7 @@ function viewSession() {
     '<span class="badge b-app">' + esc(tname) + '</span>' +
     '<span class="q-count num">' + (S.idx + 1) + ' / ' + S.qids.length + '</span>' +
     '<button class="flagbtn' + (flagged ? ' on' : '') + '" data-action="flag">&#9873; ' + (flagged ? 'Flagged' : 'Flag') + '</button>' +
-    (S.timed ? '<span class="timer num" id="timerEl">' + fmtClock(S.remaining) + '</span>' : '') +
+    (S.timed ? '<span class="timer num" id="timerEl">' + fmtClock(S.remaining) + '</span>' : qTimerHTML(qid, revealed)) +
     '</div>' +
     '<div id="annoBarWrap">' + annoBar() + '</div>' +
     passageHTML(p) +
@@ -1745,6 +1793,7 @@ function viewResults() {
     return '<details class="card" style="padding:10px 14px">' +
       '<summary><strong>Q' + (i + 1) + '</strong> ' +
       (ok ? '<span class="acc good">right</span>' : '<span class="acc bad">' + (picked == null ? 'blank' : 'wrong: picked ' + letter(picked)) + ' · answer ' + letter(q.answer) + '</span>') +
+      (S.qSecs[qid] != null ? ' <span class="faint num">' + fmtSecs(S.qSecs[qid]) + '</span>' : '') +
       '</summary>' +
       (QPASSAGE[qid] ? passageHTML(QPASSAGE[qid]) : '') +
       (q.stimulus ? annoBlock(q.stimulus, qid + ':stim', 'q-stim') : '') +
@@ -2013,11 +2062,25 @@ document.addEventListener('click', e => {
     const i = Number(btn.dataset.i);
     if (S.timed) { S.answers[qid] = S.answers[qid] === i ? null : i; if (S.answers[qid] == null) delete S.answers[qid]; S.confirmSubmit = false; }
     else if (!S.revealed[qid]) {
+      let secs = null;
+      if (S.qStart[qid] != null) {
+        secs = Math.max(0, Math.round((Date.now() - S.qStart[qid]) / 100) / 10);
+        S.qSecs[qid] = secs;
+        stopQTimer();
+      }
       S.answers[qid] = i;
       S.revealed[qid] = true;
-      recordAttempt(qid, i, S.kind === 'review' ? 'review' : 'drill');
+      recordAttempt(qid, i, S.kind === 'review' ? 'review' : 'drill', secs);
       if (i !== getQ(qid).answer) injectReinforcement(qid);
     }
+    render();
+    return;
+  }
+  if (a === 'qtimer-start') {
+    if (!S) return;
+    S.qStart[S.qids[S.idx]] = Date.now();
+    stopQTimer();
+    qTimerId = setInterval(tickQTimer, 500);
     render();
     return;
   }
@@ -2070,6 +2133,7 @@ document.addEventListener('click', e => {
   }
   if (a === 'exit-session') {
     stopTimer();
+    stopQTimer();
     const to = S && S.backTo ? S.backTo : '#/practice';
     S = null;
     location.hash = to;
