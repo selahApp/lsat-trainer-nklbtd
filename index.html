@@ -842,7 +842,8 @@ function qTimerHTML(qid, revealed) {
     return s != null ? '<span class="qtimer num">' + fmtSecs(s) + '</span>' : '';
   }
   const t0 = S.qStart[qid];
-  if (t0) return '<span class="qtimer num running" id="qtimer" data-t0="' + t0 + '">' + fmtSecs((Date.now() - t0) / 1000) + '</span>';
+  if (t0) return '<span class="qtimer num running" id="qtimer" data-t0="' + t0 + '">' + fmtSecs((Date.now() - t0) / 1000) + '</span>' +
+    '<button class="btn ghost sm" data-action="qtimer-reset">Reset</button>';
   return '<button class="btn sm" style="margin-left:auto" data-action="qtimer-start">&#9654; Start timer</button>';
 }
 
@@ -2081,6 +2082,13 @@ document.addEventListener('click', e => {
     S.qStart[S.qids[S.idx]] = Date.now();
     stopQTimer();
     qTimerId = setInterval(tickQTimer, 500);
+    render();
+    return;
+  }
+  if (a === 'qtimer-reset') {
+    if (!S) return;
+    delete S.qStart[S.qids[S.idx]];
+    stopQTimer();
     render();
     return;
   }
