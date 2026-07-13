@@ -231,6 +231,9 @@ textarea{width:100%;min-height:110px;font-size:.82rem;font-family:ui-monospace,C
 .cov-head span{font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint)}
 .qtimer{font-weight:700;font-size:.9rem;margin-left:auto}
 .qtimer.running{color:var(--accent)}
+.toast{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);max-width:88vw;
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;
+  font-size:.9rem;z-index:99;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .ah-a{background:var(--an-a)}.ah-p{background:var(--an-p)}.ah-c{background:var(--an-c)}
 .ah-s{background:var(--an-s)}.ah-i{background:var(--an-i)}
 .au-a{text-decoration:underline;text-decoration-color:var(--anu-a);text-decoration-thickness:2px}
@@ -971,8 +974,8 @@ function injectReinforcement(qid) {
     }
   } else if (q.type && !q.type.startsWith('rc-')) {
     const last = lastAttempts();
-    const pool = D.lrQuestions.filter(x => x.type === q.type && x.id !== qid && !S.qids.includes(x.id));
-    const rank = x => (x.skill === q.skill ? 0 : 1) + (last[x.id] ? (last[x.id].correct ? 4 : 1) : 0);
+    const pool = D.lrQuestions.filter(x => x.type === q.type && x.id !== qid && !S.qids.includes(x.id) && !last[x.id]);
+    const rank = x => (x.skill === q.skill ? 0 : 1);
     pool.sort((a, b) => rank(a) - rank(b));
     extras = pool.slice(0, 2).map(x => x.id);
   }
@@ -982,7 +985,7 @@ function injectReinforcement(qid) {
   S.lastInject = { n: extras.length, name: q.type === 'gym' ? q.gymName : (TYPE_NAME[q.type] || q.type) };
 }
 
-/* 10 questions weighted toward the user's weakest types; wrong-before questions first */
+/* 10 unseen questions weighted toward the user's weakest types (misses live in the review queue) */
 function pickSmartSet(n) {
   const last = lastAttempts();
   const acc = {};
@@ -992,12 +995,10 @@ function pickSmartSet(n) {
   }
   const score = q => {
     const a = acc[q.type];
-    const typeNeed = a == null ? 0.5 : 1 - a;
-    const attempt = last[q.id];
-    const fresh = !attempt ? 0.3 : attempt.correct ? -0.5 : 0.45;
-    return typeNeed + fresh + Math.random() * 0.25;
+    return (a == null ? 0.5 : 1 - a) + Math.random() * 0.25;
   };
-  return D.lrQuestions.slice().sort((a, b) => score(b) - score(a)).slice(0, n).map(q => q.id);
+  return D.lrQuestions.filter(q => !last[q.id])
+    .sort((a, b) => score(b) - score(a)).slice(0, n).map(q => q.id);
 }
 
 function pickTimedSet(n) {
@@ -1006,6 +1007,13 @@ function pickTimedSet(n) {
   const seen = D.lrQuestions.filter(q => last[q.id]);
   const pool = shuffle(fresh).concat(shuffle(seen));
   return pool.slice(0, n).map(q => q.id);
+}
+function toast(msg) {
+  const d = document.createElement('div');
+  d.className = 'toast';
+  d.textContent = msg;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 4000);
 }
 function shuffle(arr) {
   const a = arr.slice();
@@ -1683,8 +1691,9 @@ function viewPractice() {
     '<button class="btn" data-action="flash-open">Review flashcards</button></div>' +
 
     '<div class="card"><div class="spread"><h2>Smart drill</h2><span class="faint">adapts to you</span></div>' +
-    '<p class="small muted">Ten questions aimed at your weakest types, with ones you missed before coming back first. ' +
-    'And in any drill, missing a question adds two more like it right away.</p>' +
+    '<p class="small muted">Ten fresh questions aimed at your weakest types. You never see a question twice: ' +
+    'missed ones come back through the Review queue and Flashcards instead. ' +
+    'And in any drill, missing a question adds two more fresh ones like it right away.</p>' +
     '<button class="btn" data-action="start-smart">Start smart drill</button></div>' +
 
     '<div class="card"><div class="spread"><h2>Logical Reasoning drills</h2><span class="faint num">' + lrDone + ' / ' + D.lrQuestions.length + '</span></div>' +
@@ -1698,8 +1707,8 @@ function viewPractice() {
     }).join('') + '</div>' +
 
     '<div class="card"><h2>Reading Comprehension</h2>' +
-    '<p class="small muted">Untimed to learn the method. Timed (8:45) to build real pace.</p>' +
-    D.rcPassages.map(p => {
+    '<p class="small muted">Untimed to learn the method. Timed (8:45) to build real pace. Passages you have not done yet are listed first.</p>' +
+    D.rcPassages.slice().sort((a, b) => (passageStats(a).attempted ? 1 : 0) - (passageStats(b).attempted ? 1 : 0)).map(p => {
       const st = passageStats(p);
       const acc = st.attempted ? Math.round(100 * st.correct / st.attempted) : null;
       return '<div class="type-row"><span class="type-name">' + esc(p.title) +
@@ -2021,11 +2030,12 @@ document.addEventListener('click', e => {
   if (a === 'start-drill') {
     const slug = btn.dataset.type;
     const last = lastAttempts();
-    const qs = D.lrQuestions.filter(q => q.type === slug);
-    const order = qs.filter(q => !last[q.id])
-      .concat(qs.filter(q => last[q.id] && !last[q.id].correct))
-      .concat(qs.filter(q => last[q.id] && last[q.id].correct));
-    startSession({ kind: 'drill', qids: order.map(q => q.id) });
+    const fresh = D.lrQuestions.filter(q => q.type === slug && !last[q.id]);
+    if (!fresh.length) {
+      toast('You have done every ' + (TYPE_NAME[slug] || slug) + ' question. Missed ones are in your Review queue. Ask Claude for a new wave to get more.');
+      return;
+    }
+    startSession({ kind: 'drill', qids: shuffle(fresh).map(q => q.id) });
     return;
   }
   if (a === 'start-review') {
@@ -2052,7 +2062,20 @@ document.addEventListener('click', e => {
   if (a === 'start-check') {
     const l = D.lessons.find(x => x.id === btn.dataset.lesson);
     if (!l) return;
-    const qids = l.check.filter(id => QMAP[id]);
+    /* swap already-done check questions for unseen ones of the same type */
+    const last = lastAttempts();
+    const taken = new Set();
+    const qids = l.check.filter(id => QMAP[id]).map(id => {
+      if (!last[id]) { taken.add(id); return id; }
+      const type = QMAP[id].type;
+      const pool = type.startsWith('rc-')
+        ? D.rcPassages.flatMap(p => p.questions).filter(q => q.type === type && !last[q.id] && !taken.has(q.id))
+        : D.lrQuestions.filter(q => q.type === type && !last[q.id] && !taken.has(q.id));
+      if (!pool.length) { taken.add(id); return id; }
+      const sub = pool[Math.floor(Math.random() * pool.length)].id;
+      taken.add(sub);
+      return sub;
+    });
     if (qids.length) startSession({ kind: 'drill', qids, backTo: '#/lesson/' + l.id });
     return;
   }
@@ -2119,7 +2142,12 @@ document.addEventListener('click', e => {
     return;
   }
   if (a === 'start-gym') { startGym(btn.dataset.fam); return; }
-  if (a === 'start-smart') { startSession({ kind: 'drill', qids: pickSmartSet(10) }); return; }
+  if (a === 'start-smart') {
+    const qids = pickSmartSet(10);
+    if (!qids.length) { toast('You have done every question in the bank. Ask Claude for a new wave to get more.'); return; }
+    startSession({ kind: 'drill', qids });
+    return;
+  }
 
   if (a === 'flash-open') {
     FLASH = null;
