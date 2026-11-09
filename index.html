@@ -364,42 +364,37 @@ function lessonSegs(l) {
     ...(l.example ? ['Worked example. ' + l.example.stimulus, l.example.walkthrough.map(spEnd).join(' ')] : []),
     'That is the end of this lesson.']);
 }
-/* spoken coaching for every question type: family, the job, and a coach tip */
-const SP_FAMILY = { arg: 'the Argument family', fact: 'the Fact family', struct: 'the Structure family', rc: 'Reading Comprehension' };
-const SP_COACH = {
-  'flaw': ['Flaw', 'arg', 'Find the gap between the evidence and the conclusion, then pick the answer that describes that mistake.', 'Name the flaw in your own words before the choices. Watch for cause and effect jumps, small samples, and a word that shifts meaning. Right answers often say the author takes for granted, or fails to consider.'],
-  'basic-assumption': ['Assumption', 'arg', 'Find the unstated idea the argument depends on.', 'Spot what is new in the conclusion that the premises never mention. The right answer links the two.'],
-  'required-assumption': ['Necessary Assumption', 'arg', 'Find what must be true for the argument to work.', 'Use the negation test. Flip the answer, and if the argument falls apart, that is it. Right answers are often mild, so be careful with strong words like all or always.'],
-  'sufficient-assumption': ['Sufficient Assumption', 'arg', 'Find the answer that, added to the premises, proves the conclusion.', 'Find the new term in the conclusion and build a bridge to it. Strong, conditional answers are welcome here.'],
-  'supporting-principle': ['Principle', 'arg', 'Find the general rule that makes the conclusion follow.', 'The rule must be triggered by the facts, and its result must match the conclusion exactly.'],
-  'strengthen': ['Strengthen', 'arg', 'Find the answer that makes the conclusion more likely.', 'Find the gap first. Then look for an answer that rules out another cause or backs up the evidence. New information is allowed.'],
-  'weaken': ['Weaken', 'arg', 'Find the answer that makes the conclusion less likely.', 'Accept the premises as true and attack the link. Common moves are another cause, a biased sample, or a key difference. Answers that only attack a premise are traps.'],
-  'match-flaw': ['Parallel Flaw', 'arg', 'Name the flaw, then find the answer that makes the same mistake.', 'Ignore the topic. Match the mistake, and check that the conclusion is just as strong.'],
-  'id-conclusion': ['Main Conclusion', 'struct', 'Find the main point the author is trying to prove.', 'Use the therefore test. The conclusion can hide in the middle, and words like but or however often turn toward it.'],
-  'id-role': ['Role', 'struct', 'Say what job the quoted statement does in the argument.', 'Find the main conclusion first. Then decide if the statement supports it, is supported by something, or is a view the author opposes.'],
-  'reasoning-structure': ['Method of Reasoning', 'struct', 'Describe how the argument is built, not what it says.', 'Put each move in plain words before the choices. Check every part of an answer, because half right is wrong.'],
-  'match-reasoning': ['Parallel Reasoning', 'struct', 'Find the answer with the same pattern of reasoning.', 'Shrink the argument to letters, like if A then B. Match the type of conclusion first, then the premises.'],
-  'inference': ['Inference', 'fact', 'Find what must be true, or most strongly supported, using only these facts.', 'Use no outside knowledge. Combine the statements, especially if then rules. Mild answers with words like some or can be are safer than extreme ones.'],
-  'give-example': ['Principle Example', 'fact', 'Find the case that fits the rule.', 'Check that the trigger happens and the result follows. Seeing the result alone proves nothing.'],
-  'id-disagreement': ['Point at Issue', 'fact', 'Find the claim the two speakers disagree about.', 'Both must speak to it. Test each answer: would the first speaker say yes, and the second say no?'],
-  'explain': ['Paradox', 'fact', 'Find the fact that lets two surprising statements both be true.', 'Do not pick a side. Look for a difference between the two groups or times. An answer that explains only one side is wrong.'],
-  'rc-main-point': ['Main Point', 'rc', 'Find the statement that sums up the whole passage.', 'Say the main point in your own words first. Answers that are too narrow or too broad are the usual traps.'],
-  'rc-primary-purpose': ['Primary Purpose', 'rc', 'Say why the author wrote the passage.', 'Focus on the verb: explain, argue, criticize, or compare. It has to fit the whole passage and the tone.'],
-  'rc-detail': ['Detail', 'rc', 'Find what the passage directly says.', 'Go back and find the line. The right answer is often the passage in new words.'],
-  'rc-inference': ['Inference', 'rc', 'Find what must be true based on the passage.', 'Stay close to the text. Small, careful answers beat bold ones.'],
-  'rc-attitude': ['Author Attitude', 'rc', 'Describe how the author feels about the subject.', 'Look for tone words like however, merely, or compelling. LSAT authors are rarely extreme.'],
-  'rc-structure': ['Structure', 'rc', 'Describe how the passage or a paragraph is organized.', 'Use your paragraph notes. Match each part of the answer to a part of the passage.'],
-  'rc-analogy': ['Analogy', 'rc', 'Find the situation most like the one in the passage.', 'Strip it down to its logic. Match the relationship, not the topic.'],
-  'rc-strengthen-weaken': ['Strengthen or Weaken', 'rc', 'Find the answer that supports or hurts a claim in the passage.', 'Pin down exactly which claim is asked about, then treat it like an LR strengthen or weaken question.'],
-  'rc-comparative': ['Comparative Passage', 'rc', 'Work out how the two passages relate.', 'Note where the authors agree and disagree. Every part of the answer must be true of the right passage.']
+/* after the stem: the one move that leads to the right answer, in 2 or 3 word sentences */
+const SP_JOB = {
+  'flaw': 'Find the gap. Name the mistake.',
+  'basic-assumption': 'Find the gap. Bridge it.',
+  'required-assumption': 'Negate each answer. Collapse means correct.',
+  'sufficient-assumption': 'Link new term. Prove the conclusion.',
+  'supporting-principle': 'Facts trigger rule. Rule gives conclusion.',
+  'strengthen': 'Find the gap. Close it.',
+  'weaken': 'Premises stay true. Attack the link.',
+  'match-flaw': 'Name the flaw. Copy it exactly.',
+  'id-conclusion': 'Find the boss. Use therefore.',
+  'id-role': 'Find the conclusion. Name the job.',
+  'reasoning-structure': 'Describe the moves. Ignore the topic.',
+  'match-reasoning': 'Use letters. Match the shape.',
+  'inference': 'Facts only. Prove it.',
+  'give-example': 'Trigger happens. Result follows.',
+  'id-disagreement': 'Both must speak. One agrees. One disagrees.',
+  'explain': 'Both facts true. Find the difference.',
+  'rc-main-point': 'Sum up everything. Not one part.',
+  'rc-primary-purpose': 'Find the verb. Fit the whole.',
+  'rc-detail': 'Find the line. Match it.',
+  'rc-inference': 'Stay close. Prove it.',
+  'rc-attitude': 'Find tone words. Stay mild.',
+  'rc-structure': 'Map each paragraph. Match each part.',
+  'rc-analogy': 'Match the relationship. Ignore the topic.',
+  'rc-strengthen-weaken': 'Pin the claim. Test it.',
+  'rc-comparative': 'Compare the authors. Check both.'
 };
 const SP_SAME_PASSAGE = 'The passage is the same one you just heard. It is on your screen.';
-function spCoach(type) {
-  const c = SP_COACH[type];
-  if (!c) return '';
-  return 'This is ' + (/^[AEIOU]/.test(c[0]) ? 'an ' : 'a ') + c[0] + ' question, from ' + SP_FAMILY[c[1]] + '. Your job: ' + c[2] + ' Coach tip: ' + c[3];
-}
-/* order Roody asked for: stem, type and coaching, stimulus (or passage), choices, then the explained answer */
+function spCoach(type) { return SP_JOB[type] ? 'Your job. ' + SP_JOB[type] : ''; }
+/* order Roody asked for: stem, your job, stimulus (or passage), choices, then the explained answer */
 function questionSegs(q, p, withAnswer, passageHeard) {
   const parts = [q.stem];
   const coach = spCoach(q.type);
