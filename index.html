@@ -364,11 +364,49 @@ function lessonSegs(l) {
     ...(l.example ? ['Worked example. ' + l.example.stimulus, l.example.walkthrough.map(spEnd).join(' ')] : []),
     'That is the end of this lesson.']);
 }
-function questionSegs(q, p, withAnswer) {
-  const parts = [];
-  if (p) parts.push(...(p.kind === 'comparative' ? ['Passage A. ' + p.passageA, 'Passage B. ' + p.passageB] : [spEnd(p.title) + '\n' + p.passage]));
+/* spoken coaching for every question type: family, the job, and a coach tip */
+const SP_FAMILY = { arg: 'the Argument family', fact: 'the Fact family', struct: 'the Structure family', rc: 'Reading Comprehension' };
+const SP_COACH = {
+  'flaw': ['Flaw', 'arg', 'Find the gap between the evidence and the conclusion, then pick the answer that describes that mistake.', 'Name the flaw in your own words before the choices. Watch for cause and effect jumps, small samples, and a word that shifts meaning. Right answers often say the author takes for granted, or fails to consider.'],
+  'basic-assumption': ['Assumption', 'arg', 'Find the unstated idea the argument depends on.', 'Spot what is new in the conclusion that the premises never mention. The right answer links the two.'],
+  'required-assumption': ['Necessary Assumption', 'arg', 'Find what must be true for the argument to work.', 'Use the negation test. Flip the answer, and if the argument falls apart, that is it. Right answers are often mild, so be careful with strong words like all or always.'],
+  'sufficient-assumption': ['Sufficient Assumption', 'arg', 'Find the answer that, added to the premises, proves the conclusion.', 'Find the new term in the conclusion and build a bridge to it. Strong, conditional answers are welcome here.'],
+  'supporting-principle': ['Principle', 'arg', 'Find the general rule that makes the conclusion follow.', 'The rule must be triggered by the facts, and its result must match the conclusion exactly.'],
+  'strengthen': ['Strengthen', 'arg', 'Find the answer that makes the conclusion more likely.', 'Find the gap first. Then look for an answer that rules out another cause or backs up the evidence. New information is allowed.'],
+  'weaken': ['Weaken', 'arg', 'Find the answer that makes the conclusion less likely.', 'Accept the premises as true and attack the link. Common moves are another cause, a biased sample, or a key difference. Answers that only attack a premise are traps.'],
+  'match-flaw': ['Parallel Flaw', 'arg', 'Name the flaw, then find the answer that makes the same mistake.', 'Ignore the topic. Match the mistake, and check that the conclusion is just as strong.'],
+  'id-conclusion': ['Main Conclusion', 'struct', 'Find the main point the author is trying to prove.', 'Use the therefore test. The conclusion can hide in the middle, and words like but or however often turn toward it.'],
+  'id-role': ['Role', 'struct', 'Say what job the quoted statement does in the argument.', 'Find the main conclusion first. Then decide if the statement supports it, is supported by something, or is a view the author opposes.'],
+  'reasoning-structure': ['Method of Reasoning', 'struct', 'Describe how the argument is built, not what it says.', 'Put each move in plain words before the choices. Check every part of an answer, because half right is wrong.'],
+  'match-reasoning': ['Parallel Reasoning', 'struct', 'Find the answer with the same pattern of reasoning.', 'Shrink the argument to letters, like if A then B. Match the type of conclusion first, then the premises.'],
+  'inference': ['Inference', 'fact', 'Find what must be true, or most strongly supported, using only these facts.', 'Use no outside knowledge. Combine the statements, especially if then rules. Mild answers with words like some or can be are safer than extreme ones.'],
+  'give-example': ['Principle Example', 'fact', 'Find the case that fits the rule.', 'Check that the trigger happens and the result follows. Seeing the result alone proves nothing.'],
+  'id-disagreement': ['Point at Issue', 'fact', 'Find the claim the two speakers disagree about.', 'Both must speak to it. Test each answer: would the first speaker say yes, and the second say no?'],
+  'explain': ['Paradox', 'fact', 'Find the fact that lets two surprising statements both be true.', 'Do not pick a side. Look for a difference between the two groups or times. An answer that explains only one side is wrong.'],
+  'rc-main-point': ['Main Point', 'rc', 'Find the statement that sums up the whole passage.', 'Say the main point in your own words first. Answers that are too narrow or too broad are the usual traps.'],
+  'rc-primary-purpose': ['Primary Purpose', 'rc', 'Say why the author wrote the passage.', 'Focus on the verb: explain, argue, criticize, or compare. It has to fit the whole passage and the tone.'],
+  'rc-detail': ['Detail', 'rc', 'Find what the passage directly says.', 'Go back and find the line. The right answer is often the passage in new words.'],
+  'rc-inference': ['Inference', 'rc', 'Find what must be true based on the passage.', 'Stay close to the text. Small, careful answers beat bold ones.'],
+  'rc-attitude': ['Author Attitude', 'rc', 'Describe how the author feels about the subject.', 'Look for tone words like however, merely, or compelling. LSAT authors are rarely extreme.'],
+  'rc-structure': ['Structure', 'rc', 'Describe how the passage or a paragraph is organized.', 'Use your paragraph notes. Match each part of the answer to a part of the passage.'],
+  'rc-analogy': ['Analogy', 'rc', 'Find the situation most like the one in the passage.', 'Strip it down to its logic. Match the relationship, not the topic.'],
+  'rc-strengthen-weaken': ['Strengthen or Weaken', 'rc', 'Find the answer that supports or hurts a claim in the passage.', 'Pin down exactly which claim is asked about, then treat it like an LR strengthen or weaken question.'],
+  'rc-comparative': ['Comparative Passage', 'rc', 'Work out how the two passages relate.', 'Note where the authors agree and disagree. Every part of the answer must be true of the right passage.']
+};
+const SP_SAME_PASSAGE = 'The passage is the same one you just heard. It is on your screen.';
+function spCoach(type) {
+  const c = SP_COACH[type];
+  if (!c) return '';
+  return 'This is ' + (/^[AEIOU]/.test(c[0]) ? 'an ' : 'a ') + c[0] + ' question, from ' + SP_FAMILY[c[1]] + '. Your job: ' + c[2] + ' Coach tip: ' + c[3];
+}
+/* order Roody asked for: stem, type and coaching, stimulus (or passage), choices, then the explained answer */
+function questionSegs(q, p, withAnswer, passageHeard) {
+  const parts = [q.stem];
+  const coach = spCoach(q.type);
+  if (coach) parts.push(coach);
+  if (p) parts.push(...(passageHeard ? [SP_SAME_PASSAGE] : p.kind === 'comparative' ? ['Passage A. ' + p.passageA, 'Passage B. ' + p.passageB] : [spEnd(p.title) + '\n' + p.passage]));
   if (q.stimulus) parts.push(q.stimulus);
-  parts.push(q.stem + ' ' + q.choices.map((c, i) => 'Choice ' + 'ABCDE'[i] + '. ' + spEnd(c)).join(' '));
+  parts.push('The answer choices. ' + q.choices.map((c, i) => 'Choice ' + 'ABCDE'[i] + '. ' + spEnd(c)).join(' '));
   if (withAnswer) parts.push('The correct answer is ' + 'ABCDE'[q.answer] + '. ' + spEnd(q.choices[q.answer]) + ' ' + q.explanations[q.answer].replace(/^Correct\.\s*/, ''));
   return spSegs(parts);
 }
@@ -377,7 +415,7 @@ function sowellSegs(a) {
   return spSegs([spEnd(a.title), a.body, 'LSAT corner. The conclusion: ' + spEnd(L.conclusion) + ' The premise: ' + spEnd(L.premise) +
     ' The hidden assumption: ' + spEnd(L.assumption) + ' Where to attack it: ' + spEnd(L.attack)]);
 }
-const SP_TEST = ['This is your read aloud voice. Every lesson, review question, and Sowell article can be read to you.'];
+const SP_TEST = ['This is your read aloud voice. Every lesson, review question, and Sowell article can be read to you.', SP_SAME_PASSAGE];
 if (typeof module !== 'undefined') module.exports = { spHash, spSegs, lessonSegs, questionSegs, sowellSegs, SP_TEST };
 
 'use strict';
@@ -2284,6 +2322,8 @@ function viewSession() {
   }
 
   const openScene = S.stickId && D.stickman.find(s => s.id === S.stickId);
+  /* RC: read the passage with the first question only */
+  const heard = !!(p && S.heardPassage && S.heardPassage[p.id] && S.heardPassage[p.id] !== qid);
   if (openScene) return '<div class="q-wrap">' + stickPlayer(openScene, 'stick-close') + '</div>';
   return '<div class="q-wrap">' +
     '<div class="q-top">' +
@@ -2293,8 +2333,8 @@ function viewSession() {
     '<button class="flagbtn' + (flagged ? ' on' : '') + '" data-action="flag">&#9873; ' + (flagged ? 'Flagged' : 'Flag') + '</button>' +
     (S.blind ? '<span class="timer num">Blind review</span>' : S.timed ? '<span class="timer num" id="timerEl">' + fmtClock(S.remaining) + '</span>' : qTimerHTML(qid, revealed)) +
     '</div>' +
-    (S.timed ? '' : rdBar([['Qq:' + qid, 'Read question', questionSegs(q, p, false)],
-      ['Qa:' + qid, S.kind === 'review' ? 'Listen and explain answer' : 'Question and answer', questionSegs(q, p, true)]])) +
+    (S.timed ? '' : rdBar([['Qq:' + qid, 'Read question', questionSegs(q, p, false, heard)],
+      ['Qa:' + qid, S.kind === 'review' ? 'Listen and explain answer' : 'Question and answer', questionSegs(q, p, true, heard)]])) +
     '<div id="annoBarWrap">' + annoBar() + '</div>' +
     passageHTML(p) +
     (q.stimulus ? annoBlock(q.stimulus, qid + ':stim', 'q-stim') : '') +
@@ -2877,7 +2917,22 @@ document.addEventListener('click', e => {
   }
 
   if (a === 'rd-test') { RDTEXT.test = { segs: SP_TEST }; rdPlay('test'); return; }
-  if (a === 'rd-play') { rdPlay(btn.dataset.key); return; }
+  if (a === 'rd-play') {
+    const k = btn.dataset.key;
+    if (S && /^Q[qa]:/.test(k)) {
+      const qid = k.slice(3), pp = QPASSAGE[qid];
+      S.heardPassage = S.heardPassage || {};
+      if (pp && !S.heardPassage[pp.id]) S.heardPassage[pp.id] = qid;
+      /* the clock starts with the audio and stops when an answer is picked */
+      if (!S.revealed[qid] && !S.qStart[qid]) {
+        S.qStart[qid] = Date.now(); stopQTimer(); qTimerId = setInterval(tickQTimer, 500);
+        const slot = document.querySelector('[data-action="qtimer-start"]');
+        if (slot) slot.outerHTML = qTimerHTML(qid, false);
+      }
+    }
+    rdPlay(k);
+    return;
+  }
   if (a === 'rd-stop') { rdStop(); return; }
   if (a === 'lesson-done' || a === 'lesson-done-next') {
     const id = btn.dataset.lesson;
